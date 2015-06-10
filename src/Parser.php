@@ -16,212 +16,212 @@ namespace NginxConf;
  */
 class Parser
 {
-    /**
-     * The config file to parse.
-     * @var string
-     */
-    private $file;
+	/**
+	 * The config file to parse.
+	 * @var string
+	 */
+	private $file;
 
-    /**
-     * Current Position in String Buffer
-     * @var int
-     */
-    private $index;
+	/**
+	 * Current Position in String Buffer
+	 * @var int
+	 */
+	private $index;
 
-    public function __construct($file)
-    {
-        $this->file    = $file;
-        $this->index   = -1;
-        $this->tree    = null;
-        $this->context = null;
-        $this->error   = null;
-    }
+	public function __construct($file)
+	{
+		$this->file    = $file;
+		$this->index   = -1;
+		$this->tree    = null;
+		$this->context = null;
+		$this->error   = null;
+	}
 
-    public function parse($file = '')
-    {
-        $this->file = ($file !== '') ? $file : $this->file;
+	public function parse($file = '')
+	{
+		$this->file = ($file !== '') ? $file : $this->file;
 
-        $this->source  = file_get_contents($this->file);
-        $this->index   = 0;
-        $this->tree    = new Node('[root]');
-        $this->context = new Node(null, null, $this->tree);
-        $this->error   = null;
+		$this->source  = file_get_cont	($this->file);
+		$this->index   = 0;
+		$this->tree    = new Node('[root]');
+		$this->context = new Node(null, null, $this->tree);
+		$this->error   = null;
 
-        do {
-            $this->parseNextToken();
-            if (is_array($this->error) === true) {
-                throw new \Exception(
-                sprintf(
-                    'Parsing Error on line %s, column %s: %s.',
-                    $this->error['line'],
-                    $this->error['column'],
-                    $this->error['message']
-                ));
-                return;
-            }
-        } while ($this->index < strlen($this->source));
+		do {
+			$this->parseNextToken();
+			if (is_array($this->error) === true) {
+				throw new \Exception(
+				sprintf(
+					'Parsing Error on line %s, column %s: %s.',
+					$this->error['line'],
+					$this->error['column'],
+					$this->error['message']
+				));
+				return;
+			}
+		} while ($this->index < strlen($this->source));
 
-        // print_r($this->tree);
+		// print_r($this->tree);
 
-        return $this->tree;
-    }
+		return $this->tree;
+	}
 
-    function parseNextToken()
-    {
-        $c = $this->source{$this->index};
+	function parseNextToken()
+	{
+		$c = $this->source{$this->index};
 
-        // echo 'Current Token = "' . $c . '"' . PHP_EOL;
+		// echo 'Current Token = "' . $c . '"' . PHP_EOL;
 
-        $value = '';
+		$value = '';
 
-        if (!$c) {
-            return;
-        }
+		if (!$c) {
+			return;
+		}
 
-        switch ($c) {
-            case '{':
-            case ';':
-                $this->context->value = trim( $this->context->value );
-                $this->context->parent->children[] = $this->context;
-                // new context is child of current context, or a sibling to the parent
-                $this->context = new Node(null, null, $c === '{' ? $this->context : $this->context->parent);
-                $this->index++;
-                break;
-            case '}':
-                // new context is sibling to the parent
-                $this->context = new Node(null, null, $this->context->parent->parent);
-                $this->index++;
-                break;
-            case "\n":
-            case "\r":
-                if ($this->context->value) {
-                    $this->context->value .= $c;
-                }
-                $this->index++;
-                break;
-            case "'":
-            case '"':
-                if (!$this->context->name) {
-                    $this->setError('Found string, but expected directive.');
-                    return;
-                }
+		switch ($c) {
+			case '{':
+			case ';':
+				$this->context->value = trim( $this->context->value );
+				$this->context->parent->children[] = $this->context;
+				// new context is child of current context, or a sibling to the parent
+				$this->context = new Node(null, null, $c === '{' ? $this->context : $this->context->parent);
+				$this->index++;
+				break;
+			case '}':
+				// new context is sibling to the parent
+				$this->context = new Node(null, null, $this->context->parent->parent);
+				$this->index++;
+				break;
+			case "\n":
+			case "\r":
+				if ($this->context->value) {
+					$this->context->value .= $c;
+				}
+				$this->index++;
+				break;
+			case "'":
+			case '"':
+				if (!$this->context->name) {
+					$this->setError('Found string, but expected directive.');
+					return;
+				}
 
-                $this->context->value .= $this->readString();
-                break;
-            case '#':
-                $this->context->comments[] = $this->readComment();
-                break;
-            default:
-                $value = $this->readWord();
-                if (!$this->context->name) {
-                    $this->context->name = trim($value);
-                    // read trailing whitespace
-                    $ws = preg_match('/^\s*/', substr($this->source, $this->index), $matches);
-                    if ($ws) {
-                        $this->index += strlen($matches[0]);
-                    }
-                } else {
-                    $this->context->value .= $value;
-                }
-                break;
-        }
-    }
+				$this->context->value .= $this->readString();
+				break;
+			case '#':
+				$this->context->comments[] = $this->readComment();
+				break;
+			default:
+				$value = $this->readWord();
+				if (!$this->context->name) {
+					$this->context->name = trim($value);
+					// read trailing whitespace
+					$ws = preg_match('/^\s*/', substr($this->source, $this->index), $matches);
+					if ($ws) {
+						$this->index += strlen($matches[0]);
+					}
+				} else {
+					$this->context->value .= $value;
+				}
+				break;
+		}
+	}
 
-    function setError($message)
-    {
-        // determine current "line number" and "column" (index pos on last line)
-        $source   = substr($this->source, 0, $this->index);
-        $lines    = explode("\n", $source);
-        $line     = count($lines);
-        $lastline = end($lines);
-        $column   = strlen($lastline);
+	function setError($message)
+	{
+		// determine current "line number" and "column" (index pos on last line)
+		$source   = substr($this->source, 0, $this->index);
+		$lines    = explode("\n", $source);
+		$line     = count($lines);
+		$lastline = end($lines);
+		$column   = strlen($lastline);
 
-        $this->error = array(
-            'message' => $message,
-            'line'    => $line,
-            'column'  => $column,
-            'index'   => $this->index
-        );
-    }
+		$this->error = array(
+			'message' => $message,
+			'line'    => $line,
+			'column'  => $column,
+			'index'   => $this->index
+		);
+	}
 
-    function readString()
-    {
-        $delimiter = $this->source{$this->index};
-        $value     = $delimiter;
+	function readString()
+	{
+		$delimiter = $this->source{$this->index};
+		$value     = $delimiter;
 
-        $pos    = $this->index + 1;
-        $length = strlen($this->source);
+		$pos    = $this->index + 1;
+		$length = strlen($this->source);
 
-        for ($i = $pos; $i < $length; $i++) {
-            if ($this->source{$i} === "\\" && $this->source{($i + 1)} !== ".") {
-                $value .= $this->source{$i} + $this->source{($i + 1)};
-                $i++;
-                continue;
-            }
+		for ($i = $pos; $i < $length; $i++) {
+			if ($this->source{$i} === "\\" && $this->source{($i + 1)} !== ".") {
+				$value .= $this->source{$i} + $this->source{($i + 1)};
+				$i++;
+				continue;
+			}
 
-            // break out, when reaching the ending delimiter
-            if ($this->source{$i} === $delimiter) {
-                $value .= $delimiter;
-                break;
-            }
+			// break out, when reaching the ending delimiter
+			if ($this->source{$i} === $delimiter) {
+				$value .= $delimiter;
+				break;
+			}
 
-            $value .= $this->source{$i};
-        }
+			$value .= $this->source{$i};
+		}
 
-        if (strlen($value) < 2 || $value{(strlen($value) - 1)} !== $delimiter) {
-            echo $value;
-            $this->setError('Unable to parse quote-delimited value (probably an unclosed string).');
-            return '';
-        }
+		if (strlen($value) < 2 || $value{(strlen($value) - 1)} !== $delimiter) {
+			echo $value;
+			$this->setError('Unable to parse quote-delimited value (probably an unclosed string).');
+			return '';
+		}
 
-        $this->index += strlen($value);
+		$this->index += strlen($value);
 
-        return $value;
-    }
+		return $value;
+	}
 
-    // a comment doesn't have to end with a semicolon
-    function readComment()
-    {
-        $str    = substr($this->source, $this->index);
-        $result = preg_match('/^(.*?)(?:\r\n|\n|$)/', $str, $matches);
+	// a comment doesn't have to end with a semicolon
+	function readComment()
+	{
+		$str    = substr($this->source, $this->index);
+		$result = preg_match('/^(.*?)(?:\r\n|\n|$)/', $str, $matches);
 
-        $this->index += ($result) ? strlen($matches[0]) : 0;
+		$this->index += ($result) ? strlen($matches[0]) : 0;
 
-        return substr($matches[1], 1); // ignore # character and EOL
-    }
+		return substr($matches[1], 1); // ignore # character and EOL
+	}
 
-    function readWord()
-    {
-        $str    = substr($this->source, $this->index);
-        $result = preg_match('/^(.+?)[\s#;{}\'"]/', $str, $matches);
+	function readWord()
+	{
+		$str    = substr($this->source, $this->index);
+		$result = preg_match('/^(.+?)[\s#;{}\'"]/', $str, $matches);
 
-        if ($result === 0) {
-            $this->setError('Word not terminated. Are you missing a semicolon?');
-            return '';
-        }
+		if ($result === 0) {
+			$this->setError('Word not terminated. Are you missing a semicolon?');
+			return '';
+		}
 
-        $this->index += strlen($matches[1]);
+		$this->index += strlen($matches[1]);
 
-        return $matches[1];
-    }
+		return $matches[1];
+	}
 
 }
 
 class Node
 {
-    public $name;
-    public $value;
-    public $parent;
-    public $children;
-    public $comments;
+	public $name;
+	public $value;
+	public $parent;
+	public $children;
+	public $comments;
 
-    public function __construct($name = '', $value = '', $parent = null, $children = array())
-    {
-        $this->name     = $name;
-        $this->value    = $value;
-        $this->parent   = $parent;
-        $this->children = $children;
-        $this->comments = array();
-    }
+	public function __construct($name = '', $value = '', $parent = null, $children = array())
+	{
+		$this->name     = $name;
+		$this->value    = $value;
+		$this->parent   = $parent;
+		$this->children = $children;
+		$this->comments = array();
+	}
 
 }
